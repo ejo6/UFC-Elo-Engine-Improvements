@@ -32,6 +32,7 @@ while has_more_pages:
         
         page_number += 1  # Move to the next page
         time.sleep(1)  # Delay to avoid overloading the server
+    print(f"Event name: {event_name} scaped")
 
 # Convert to DataFrame
 events_df = pd.DataFrame(all_events)
@@ -70,7 +71,7 @@ for index, row in events_df.iterrows():
                 # Append the fight details to the all_fights list
                 all_fights.append(fight_details)
     
-    
+    print(f"Event: {event_name} parsed.")
     time.sleep(1)  # 1-second delay between event scrapes
 
 #Convert the all_fights list into a DataFrame
