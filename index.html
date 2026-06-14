@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>UFC Elo Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --red:#D40026;--red-dark:#a0001c;--gold:#c9a84c;
+      --bg:#080808;--surf:#111;--surf2:#1a1a1a;
+      --border:#252525;--text:#f0f0f0;--muted:#555;
+    }
+    body{background:var(--bg);color:var(--text);font-family:'Roboto',sans-serif;min-height:100vh}
+
+    /* ── Header ── */
+    header{
+      background:#000;border-bottom:3px solid var(--red);
+      padding:.9rem 2rem;display:flex;align-items:center;gap:1.2rem;
+      position:sticky;top:0;z-index:100;
+    }
+    .hbar{width:5px;height:42px;background:var(--red);
+      clip-path:polygon(0 0,100% 6%,100% 94%,0 100%)}
+    header h1{font-family:'Bebas Neue',sans-serif;font-size:2.1rem;
+      letter-spacing:4px;color:#fff}
+    header h1 span{color:var(--red)}
+    .hsub{font-family:'Bebas Neue',sans-serif;font-size:.85rem;
+      letter-spacing:3px;color:var(--muted);margin-left:auto}
+    .update-btn{
+      background:transparent;border:1px solid var(--border);color:var(--muted);
+      padding:.45rem 1.1rem;font-family:'Bebas Neue',sans-serif;font-size:.95rem;
+      letter-spacing:2px;cursor:pointer;transition:all .2s;white-space:nowrap;border-radius:4px;
+    }
+    .update-btn:hover:not(:disabled){border-color:var(--red);color:var(--red)}
+    .update-btn:disabled{opacity:.4;cursor:not-allowed}
+
+    /* ── Update Toast ── */
+    #update-toast{
+      display:none;position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;
+      background:var(--surf2);border:1px solid var(--border);border-left:3px solid var(--red);
+      padding:1rem 1.3rem;min-width:260px;max-width:360px;border-radius:6px;
+    }
+    #update-toast.show{display:block}
+    .toast-title{font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:2px;margin-bottom:.4rem}
+    .toast-body{font-size:.82rem;color:var(--muted);line-height:1.5}
+    .toast-body.success{color:#4caf50}
+    .toast-body.error{color:var(--red)}
+    .toast-close{
+      float:right;background:none;border:none;color:var(--muted);
+      cursor:pointer;font-size:1rem;margin-left:.5rem;line-height:1
+    }
+    .toast-close:hover{color:var(--text)}
+    .spin{display:inline-block;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* ── Layout ── */
+    .wrap{max-width:1420px;margin:0 auto;padding:1.8rem 2rem;display:flex;flex-direction:column;gap:2.4rem}
+    .sec-title{
+      font-family:'Bebas Neue',sans-serif;font-size:1.55rem;letter-spacing:3px;
+      color:var(--red);display:flex;align-items:center;gap:.8rem;margin-bottom:1rem
+    }
+    .sec-title::after{content:'';flex:1;height:1px;background:linear-gradient(to right,var(--red),transparent)}
+
+    /* ── Rankings ── */
+    .rank-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.4rem}
+    .rank-panel{background:var(--surf);border:1px solid var(--border);border-top:3px solid var(--red);overflow:hidden;border-radius:6px}
+    .rp-head{background:var(--surf2);padding:.75rem 1.2rem;display:flex;justify-content:space-between;align-items:center}
+    .rp-head h3{font-family:'Bebas Neue',sans-serif;font-size:1.15rem;letter-spacing:2px;white-space:nowrap}
+    .rp-head span{font-size:.7rem;letter-spacing:1px;color:var(--muted)}
+    .rank-scroll{height:460px;overflow-y:auto}
+    table.rtable{width:100%;border-collapse:collapse}
+    .rtable thead th{
+      background:var(--surf2);padding:.45rem .85rem;text-align:left;
+      font-size:.62rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);position:sticky;top:0
+    }
+    .rtable tbody td{padding:.42rem .85rem;border-bottom:1px solid var(--border);font-size:.88rem}
+    .rtable tbody tr:hover td{background:var(--surf2)}
+    .rnum{color:var(--red);font-weight:700;width:36px}
+    .rname{cursor:pointer;transition:color .15s}
+    .rname:hover{color:var(--gold);text-decoration:underline}
+    .relo{color:var(--gold);font-family:monospace;font-weight:700;text-align:right;width:82px;white-space:nowrap}
+    .rtable tbody tr:nth-child(1) td{background:rgba(201,168,76,.07)}
+    .rtable tbody tr:nth-child(2) td{background:rgba(200,200,200,.03)}
+    .rtable tbody tr:nth-child(3) td{background:rgba(160,100,50,.03)}
+    .rtable tbody tr:nth-child(1) .rnum{color:#FFD700;font-size:1rem}
+    .rtable tbody tr:nth-child(2) .rnum{color:#C0C0C0}
+    .rtable tbody tr:nth-child(3) .rnum{color:#CD7F32}
+
+    /* ── Lookup ── */
+    .lookup-panel{background:var(--surf);border:1px solid var(--border);border-top:3px solid var(--red);padding:1.5rem;border-radius:6px}
+    .search-row{display:flex;gap:.75rem;margin-bottom:1.2rem}
+    .search-row input{
+      flex:1;background:var(--surf2);border:1px solid var(--border);color:var(--text);
+      padding:.72rem 1rem;font-size:.95rem;font-family:'Roboto',sans-serif;outline:none;transition:border-color .2s;border-radius:5px
+    }
+    .search-row input:focus{border-color:var(--red)}
+    .search-row input::placeholder{color:var(--muted)}
+    .search-row button{
+      background:var(--red);color:#fff;border:none;padding:.72rem 2.2rem;
+      font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:2px;cursor:pointer;transition:background .2s;border-radius:5px
+    }
+    .search-row button:hover{background:var(--red-dark)}
+
+    .not-found{display:none;color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:2px;padding:.3rem 0}
+    .not-found.show{display:block}
+    .fighter-result{display:none}
+    .fighter-result.show{display:block}
+
+    .f-name{font-family:'Bebas Neue',sans-serif;font-size:2.3rem;letter-spacing:3px;margin-bottom:1rem}
+    .stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:.8rem;margin-bottom:1.4rem}
+    .stat-box{background:var(--surf2);border:1px solid var(--border);padding:.8rem;text-align:center;border-radius:5px}
+    .stat-box .slabel{font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:.3rem}
+    .stat-box .sval{font-family:'Bebas Neue',sans-serif;font-size:1.75rem;color:var(--gold)}
+    .sval.w{color:#4caf50}.sval.l{color:var(--red)}.sval.d{color:#888}
+
+    .content-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
+
+    .chart-box{background:var(--surf2);border:1px solid var(--border);padding:1rem;position:relative;height:300px;border-radius:6px}
+    .box-label{font-family:'Bebas Neue',sans-serif;font-size:.9rem;letter-spacing:2px;color:var(--muted);margin-bottom:.5rem}
+
+    .fights-box{background:var(--surf2);border:1px solid var(--border);overflow:hidden;border-radius:6px}
+    .fights-box .box-label{padding:.6rem .85rem;background:var(--surf);margin-bottom:0}
+    .fights-scroll{height:260px;overflow-y:auto}
+    table.ftable{width:100%;border-collapse:collapse;font-size:.8rem}
+    .ftable thead th{
+      background:var(--surf);padding:.38rem .65rem;text-align:left;
+      font-size:.59rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);position:sticky;top:0
+    }
+    .ftable tbody td{padding:.33rem .65rem;border-bottom:1px solid var(--border)}
+    .ftable tbody tr:hover td{background:rgba(255,255,255,.03)}
+    .rW{color:#4caf50;font-weight:700}.rL{color:var(--red);font-weight:700}
+    .rD{color:var(--gold);font-weight:700}.rNC{color:var(--muted);font-weight:700}
+    .pos{color:#4caf50;font-size:.75em}.neg{color:var(--red);font-size:.75em}.zero{color:var(--muted);font-size:.75em}
+
+    /* Scrollbar */
+    ::-webkit-scrollbar{width:4px;height:4px}
+    ::-webkit-scrollbar-track{background:var(--surf)}
+    ::-webkit-scrollbar-thumb{background:var(--red)}
+
+    @media(max-width:900px){
+      .rank-grid{grid-template-columns:1fr}
+      .stats-row{grid-template-columns:repeat(3,1fr)}
+      .content-grid{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="hbar"></div>
+  <h1>UFC <span>ELO</span> ENGINE</h1>
+  <div class="hsub">Historical Fighter Ratings</div>
+  <button class="update-btn" id="update-btn" onclick="runUpdate()">&#8635; Update Data</button>
+</header>
+
+<!-- Update toast -->
+<div id="update-toast">
+  <button class="toast-close" onclick="closeToast()">&#x2715;</button>
+  <div class="toast-title" id="toast-title">Updating…</div>
+  <div class="toast-body" id="toast-body"></div>
+</div>
+
+<div class="wrap">
+
+  <!-- Rankings -->
+  <section>
+    <div class="sec-title">Fighter Rankings</div>
+    <div class="rank-grid">
+
+      <div class="rank-panel">
+        <div class="rp-head">
+          <h3>All-Time Peak ELO</h3>
+          <span id="peak-count"></span>
+        </div>
+        <div class="rank-scroll">
+          <table class="rtable">
+            <thead><tr><th>#</th><th>Fighter</th><th style="text-align:right">Peak ELO</th></tr></thead>
+            <tbody id="peak-body"><tr><td colspan="3" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="rank-panel">
+        <div class="rp-head">
+          <h3>Current ELO</h3>
+          <span id="curr-count"></span>
+        </div>
+        <div class="rank-scroll">
+          <table class="rtable">
+            <thead><tr><th>#</th><th>Fighter</th><th style="text-align:right;white-space:nowrap">Current ELO</th></tr></thead>
+            <tbody id="curr-body"><tr><td colspan="3" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Lookup -->
+  <section>
+    <div class="sec-title">Fighter Lookup</div>
+    <div class="lookup-panel">
+      <div class="search-row">
+        <input id="fighter-input" type="text" placeholder="Enter fighter name…" list="fl" autocomplete="off">
+        <datalist id="fl"></datalist>
+        <button onclick="doLookup()">Search</button>
+      </div>
+      <div class="not-found" id="not-found">Fighter not found — check spelling and try again</div>
+
+      <div class="fighter-result" id="fighter-result">
+        <div class="f-name" id="f-name"></div>
+        <div class="stats-row">
+          <div class="stat-box"><div class="slabel">Current ELO</div><div class="sval" id="s-curr">—</div></div>
+          <div class="stat-box"><div class="slabel">Peak ELO</div><div class="sval" id="s-peak">—</div></div>
+          <div class="stat-box"><div class="slabel">Wins</div><div class="sval w" id="s-w">—</div></div>
+          <div class="stat-box"><div class="slabel">Losses</div><div class="sval l" id="s-l">—</div></div>
+          <div class="stat-box"><div class="slabel">Draw / NC</div><div class="sval d" id="s-d">—</div></div>
+        </div>
+        <div class="content-grid">
+          <div class="chart-box">
+            <div class="box-label">ELO History</div>
+            <canvas id="elo-chart"></canvas>
+          </div>
+          <div class="fights-box">
+            <div class="box-label">Fight Record</div>
+            <div class="fights-scroll">
+              <table class="ftable">
+                <thead><tr>
+                  <th>Res</th><th>Opponent</th><th>Method</th>
+                  <th style="text-align:right">ELO</th><th style="text-align:right">+/−</th>
+                </tr></thead>
+                <tbody id="fights-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+let chart = null;
+
+async function loadRankings() {
+  const r = await fetch('/api/rankings');
+  const d = await r.json();
+  document.getElementById('peak-count').textContent = d.peak.length + ' fighters';
+  document.getElementById('curr-count').textContent = d.current.length + ' fighters';
+  fillTable('peak-body', d.peak);
+  fillTable('curr-body', d.current);
+}
+
+function fillTable(id, rows) {
+  document.getElementById(id).innerHTML = rows.map(r =>
+    `<tr>
+      <td class="rnum">${r.rank}</td>
+      <td class="rname" onclick="jumpTo('${r.fighter.replace(/'/g,"\\'")}')">${r.fighter}</td>
+      <td class="relo">${r.elo.toFixed(2)}</td>
+    </tr>`
+  ).join('');
+}
+
+async function loadFighterList() {
+  const r = await fetch('/api/fighters');
+  const list = await r.json();
+  document.getElementById('fl').innerHTML = list.map(f => `<option value="${f}">`).join('');
+}
+
+async function jumpTo(name) {
+  document.getElementById('fighter-input').value = name;
+  await fetchFighter(name);
+}
+
+async function doLookup() {
+  const v = document.getElementById('fighter-input').value.trim();
+  if (v) await fetchFighter(v);
+}
+
+async function fetchFighter(name) {
+  const nf = document.getElementById('not-found');
+  const fr = document.getElementById('fighter-result');
+  nf.classList.remove('show');
+  fr.classList.remove('show');
+  try {
+    const r = await fetch('/api/fighter/' + encodeURIComponent(name));
+    if (!r.ok) { nf.classList.add('show'); return; }
+    const d = await r.json();
+    renderFighter(d);
+    fr.classList.add('show');
+    fr.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch { nf.classList.add('show'); }
+}
+
+function renderFighter(d) {
+  document.getElementById('f-name').textContent = d.name;
+  document.getElementById('s-curr').textContent = d.current_elo != null ? d.current_elo.toFixed(2) : '—';
+  document.getElementById('s-peak').textContent = d.peak_elo   != null ? d.peak_elo.toFixed(2)   : '—';
+  const rec = d.record;
+  document.getElementById('s-w').textContent = rec.W;
+  document.getElementById('s-l').textContent = rec.L;
+  document.getElementById('s-d').textContent = rec.D + rec.NC;
+
+  if (chart) { chart.destroy(); chart = null; }
+  const canvas = document.getElementById('elo-chart');
+  canvas.style.height = '240px';
+  chart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: d.chart.labels,
+      datasets: [{
+        data: d.chart.data,
+        borderColor: '#D40026',
+        backgroundColor: 'rgba(212,0,38,.09)',
+        borderWidth: 2,
+        pointRadius: d.chart.data.length > 40 ? 0 : 3,
+        pointHoverRadius: 5,
+        pointBackgroundColor: '#D40026',
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1a1a', borderColor: '#D40026', borderWidth: 1,
+          titleColor: '#666', bodyColor: '#c9a84c',
+          callbacks: { label: ctx => 'ELO: ' + ctx.parsed.y.toFixed(2) }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#3a3a3a', maxTicksLimit: 8, maxRotation: 40, font: { size: 9 } }, grid: { color: '#181818' } },
+        y: { ticks: { color: '#555', font: { size: 10 } }, grid: { color: '#181818' } }
+      }
+    }
+  });
+
+  document.getElementById('fights-body').innerHTML = d.fights.map(f => {
+    const cls = f.elo_change > 0 ? 'pos' : f.elo_change < 0 ? 'neg' : 'zero';
+    const chg = (f.elo_change > 0 ? '+' : '') + f.elo_change.toFixed(1);
+    const opp = f.opponent.length > 20 ? f.opponent.slice(0, 19) + '…' : f.opponent;
+    return `<tr>
+      <td class="r${f.result}">${f.result}</td>
+      <td title="${f.opponent}">${opp}</td>
+      <td>${f.method}</td>
+      <td style="text-align:right;font-family:monospace">${f.elo.toFixed(1)}</td>
+      <td style="text-align:right" class="${cls}">${chg}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Update Data 
+
+function showToast(title, body, cls) {
+  document.getElementById('toast-title').textContent = title;
+  const b = document.getElementById('toast-body');
+  b.textContent = body;
+  b.className = 'toast-body' + (cls ? ' ' + cls : '');
+  document.getElementById('update-toast').classList.add('show');
+}
+
+function closeToast() {
+  document.getElementById('update-toast').classList.remove('show');
+}
+
+async function runUpdate() {
+  const btn = document.getElementById('update-btn');
+  btn.disabled = true;
+  showToast('Updating Data', '⟳ Scraping ufcstats.com for new events…', '');
+
+  try {
+    const r = await fetch('/api/update', { method: 'POST' });
+    const d = await r.json();
+
+    if (!r.ok) {
+      showToast('Update Failed', d.detail || 'An error occurred.', 'error');
+    } else if (d.new_events === 0) {
+      showToast('Already Up to Date', 'No new events found.', 'success');
+    } else {
+      const lines = d.events.map(e => `${e.name} (${e.fights} fights)`).join('\n');
+      showToast(
+        'Update Complete',
+        `Added ${d.new_fights} fights from ${d.new_events} event(s):\n${lines}`,
+        'success'
+      );
+      await Promise.all([loadRankings(), loadFighterList()]);
+    }
+  } catch (e) {
+    showToast('Update Failed', 'Could not reach the server.', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('fighter-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLookup();
+});
+
+loadRankings();
+loadFighterList();
+</script>
+</body>
+</html>
